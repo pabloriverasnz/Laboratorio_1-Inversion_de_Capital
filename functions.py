@@ -6,6 +6,7 @@ import yfinance as yf
 import numpy as np
 import itertools
 from datetime import datetime
+import matplotlib.pyplot as plt
 import locale
 locale.setlocale(locale.LC_TIME, 'es_ES')
 
@@ -49,6 +50,12 @@ def get_all_dates(all_files: 'dirección de todos los archivos'):
     dates = [[x for x in dates[j] if not 'fecha' in x] for j in range(len(dates))]
     
     dates = [item for sublist in dates for item in sublist]
+
+    return dates
+
+def get_all_dates2(all_files: 'dirección de todos los archivos'):
+    
+    dates = [all_files[i][14:22] for i in range(len(all_files))]
 
     return dates
 
@@ -106,7 +113,7 @@ def capital_values(total_cap, cash_pond, ponds):
     
     df = pd.DataFrame(data = {'Cash': cash_amount,
                              'Invested': invested_cap,
-                             'Not Invested': remaining,
+                             'Not Invested': remaining - cash,
                              'Total Not Invested': remaining + cash_amount},
                      index = ['Amount'])
     
@@ -146,4 +153,28 @@ def monthly_perf_pasive(ticks, weights, prices, titulos, date: str, capital, res
     
     return df# + capital_f#, sum(df['Valor posición'])
 
+def get_pasive_capital_results(reports):
+    
+    res = [reports[i].iloc[-1,4] for i in range(len(reports))]
+
+    return res
+
+def display_pasive_results(pasive_results, dates, df_or_graph):
+        
+    df = pd.DataFrame(data = {'Capital': pasive_results},
+                     index = dates)
+    
+    df['Rendimiento'] = df.iloc[:,0].pct_change()
+    df['Rend. Acum'] = df.iloc[:,1].cumsum()
+    
+    if df_or_graph == 1:
+        
+        plt.figure(figsize = (12,8))
+        plt.plot(df.iloc[:,0])
+        plt.title('Capital Estrategia Pasiva')
+        plt.xlabel('Fecha')
+        plt.ylabel('Capital')
+        plt.grid()
+    
+    return df if df_or_graph == 0 else None
 
