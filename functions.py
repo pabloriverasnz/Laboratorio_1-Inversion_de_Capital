@@ -76,4 +76,74 @@ def get_ticker_prices(tickers, dates):
     
     return prices
 
+def get_weights(pond_file, tickers, cash_ticks):
+    
+    ponderaciones = pd.read_csv(pond_file, skiprows = 2).dropna()
+
+    p2 = ponderaciones.iloc[:,0] + '.MX'
+    p2 = [s.replace('*', '') for s in p2]
+    p2 = [s.replace('LIVEPOLC.1', 'LIVEPOLC-1') for s in p2]
+    ponderaciones['Ticker'] = p2
+    
+    ponderaciones.set_index('Ticker', inplace = True)
+    
+    global cash
+    cash = ponderaciones.loc[cash_ticks, 'Peso (%)'] / 100
+    
+    pond = [ponderaciones.loc[i, 'Peso (%)'] for i in tickers]
+
+    return pond
+
+def cash():
+    
+    return cash
+
+def capital_values(total_cap, cash_pond, ponds):
+    
+    cash_amount = total_cap * cash_pond.values
+    invested_cap = sum(ponds) / 100 * total_cap
+    remaining = total_cap - invested_cap
+    
+    df = pd.DataFrame(data = {'Cash': cash_amount,
+                             'Invested': invested_cap,
+                             'Not Invested': remaining,
+                             'Total Not Invested': remaining + cash_amount},
+                     index = ['Amount'])
+    
+    return df
+
+def get_titulos(prices, date, comision, capital, ponderaciones):
+    
+    prices_w_comision = prices.loc[date].values * (1 + (comision))
+    
+    titulos = [int((i / 100) * capital) for i in ponderaciones] / prices_w_comision
+    titulos = titulos.astype(int)
+    
+    return titulos
+
+def monthly_perf_pasive(ticks, weights, prices, titulos, date: str, capital, res_df):
+
+    df = pd.DataFrame(data = {'Tickers': ticks,
+                             'Ponderación': weights,
+                             f"Precio ({date})": prices,
+                             'Títulos': titulos
+                             })
+    cap = capital
+
+    money = [(w / 100) * cap for w in weights]
+    
+    #df['Títulos'] = (money / df['Precio']).astype(int)
+    df['Valor posición'] = round(df[f"Precio ({date})"] * df['Títulos'], 2)
+    #df['Restante'] = money - df['Valor posición']
+    
+    # Diferencia entre precio * títulos y capital x ponderacion
+    res = [sum(money - df['Valor posición'])]
+    res_df.loc[date] = res
+     
+    #capital_f = np.sum(df['Valor posición'])
+    
+    df = df.append(df.sum(numeric_only=True), ignore_index=True)
+    
+    return df# + capital_f#, sum(df['Valor posición'])
+
 
