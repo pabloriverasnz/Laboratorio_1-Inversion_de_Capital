@@ -7,8 +7,9 @@ import numpy as np
 import itertools
 from datetime import datetime
 import matplotlib.pyplot as plt
-import locale
-locale.setlocale(locale.LC_TIME, 'es_ES')
+#import locale
+#locale.setlocale(locale.LC_TIME, 'es_ES')
+from scipy.optimize import minimize
 
 def read_multiple_csv(path):
     
@@ -75,12 +76,17 @@ def str_to_datetime(date: str, current_format: str, new_format: str):
     
     return given_format
 
-def get_ticker_prices(tickers, dates):
+def get_ticker_prices(tickers, start: 'Si date_format = 0, en lista', date_format, end = None, interval = None):
     
-    data = [yf.download(tickers, start = i).iloc[0:1,len(tickers):len(tickers) * 2] for i in dates]
-
-    prices = pd.concat(data)
-    
+    if date_format == 0:
+        data = [yf.download(tickers, start = i).iloc[0:1,len(tickers):len(tickers) * 2] for i in start]
+        prices = pd.concat(data)
+    elif date_format == 1:
+        prices = yf.download(tickers, start = start, end = end, interval = interval).iloc[:,len(tickers):len(tickers) * 2]
+        #prices = pd.concat(data)
+    else:
+        prices = 'Error, selecciona 0 o 1 en date_format'
+        
     return prices
 
 def get_weights(pond_file, tickers, cash_ticks):
@@ -109,12 +115,12 @@ def capital_values(total_cap, cash_pond, ponds):
     
     cash_amount = total_cap * cash_pond.values
     invested_cap = sum(ponds) / 100 * total_cap
-    remaining = total_cap - invested_cap
+    remaining = total_cap - (invested_cap)
     
     df = pd.DataFrame(data = {'Cash': cash_amount,
                              'Invested': invested_cap,
-                             'Not Invested': remaining - cash,
-                             'Total Not Invested': remaining + cash_amount},
+                             'Not Invested': remaining - cash_amount,
+                             'Total Not Invested': remaining},
                      index = ['Amount'])
     
     return df
@@ -178,3 +184,45 @@ def display_pasive_results(pasive_results, dates, df_or_graph):
     
     return df if df_or_graph == 0 else None
 
+def mkwtz_port(rf, prices):
+    
+    returns = np.log(1 + prices.pct_change()).dropna()
+
+    summary = pd.DataFrame()
+    summary ['Media'] = 12 * returns.mean()
+    summary['Vol'] = np.sqrt(12) * returns.std()
+
+    cov = 12 * returns.cov()
+
+    Eind = summary.T.loc['Media']
+
+    # Función obtener varianza portafolio
+    def var(w, Sigma):
+        return w.T.dot(Sigma).dot(w)
+    
+    # Número de activos
+    N = len(Eind)
+    # Dato inicial
+    w0 = np.ones(N) / N
+    # Cotas de las variables
+    bnds = ((0,1), ) * N
+    # Restricciones
+    cons = {'type': 'eq', 'fun': lambda w:w.sum() - 1}
+    
+    # Función objetivo
+    def menos_RS(w, Eind, rf, Sigma):
+        E_port = Eind.T.dot(w)
+        s_port = var(w, Sigma)**0.5
+        RS = (E_port - rf) / s_port
+        return -RS
+    
+    emv = minimize(fun=menos_RS, x0 = w0, args = (Eind, rf, cov), bounds = bnds, constraints = cons, tol = 1e-8)
+
+    report = pd.DataFrame()
+    report['Ticker'] = returns['Close'].columns
+    report.set_index('Ticker', inplace = True)
+    report['W'] = emv.x.round(6) * 100
+    report['Precio'] = prices.iloc[-1,:].values
+    #report = report[report['W'] != 0]
+    
+    return report
