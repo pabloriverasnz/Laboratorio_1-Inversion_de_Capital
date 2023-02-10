@@ -11,37 +11,54 @@ import matplotlib.pyplot as plt
 #locale.setlocale(locale.LC_TIME, 'es_ES')
 from scipy.optimize import minimize
 
-def read_multiple_csv(path):
+def read_multiple_csv(path: 'dirección de los archivos'):
     
-    'Función que lee multiples archivos csv descargados del NAFTRAC'
+    'Función que lee multiples archivos csv descargados del NAFTRAC almacenados en una carpeta'
     
-    all_files = glob.glob(os.path.join(path, "*.csv"))     # advisable to use os.path.join as this makes concatenation OS independent
-
+    # Obtener el nombre de todos los archivos
+    all_files = glob.glob(os.path.join(path, "*.csv"))
+    
+    # Leer cada uno de los archivos de acuerdo con los nombres 
     df_from_each_file = [pd.read_csv(f, skiprows = 2) for f in all_files]
 
+    # Concatenar todos los DataFrames individuales ya leídos
     concatenated_df = pd.concat(df_from_each_file)
     
+    # Eliminar filas que sean puros "0"
     concatenated_df.dropna(axis = 0, how = 'all', inplace = True)
     
+    # Además de eliminar los 0, solamente obtener los tickers que tienen un peso como dato
     concatenated_df = concatenated_df[pd.notnull(concatenated_df['Peso (%)'])] # Quitar nulos en la columna de peso
  
     return all_files, concatenated_df
 
 
-def get_constant_tickers(csv_files_df, r_ticker):
+def get_constant_tickers(csv_files_df: 'DataFrame de todos los csv concatenados', r_ticker: '1 ticker a eliminar (cash)'):
+                                                                                  # Faltaría implementar para varios tickers
     
+    'Función que obtiene los tickers que se repiten (constantes) en todos los archivos a leer, es decir, los que siempre aparecen o no salen del NAFTRAC'
+    
+    # Tickers en todo el archivo (valores únicos)
     all_tickers = csv_files_df.iloc[:,0].unique()
     
+    # Dar formato a cada ticker para poder descargar de yf y obtener los que se repiten 25 veces (25 archivos concatenados)
     c_tickers = [csv_files_df[csv_files_df['Ticker'] == i].iloc[0,0] + '.MX' for i in all_tickers if len(csv_files_df[csv_files_df['Ticker'] == i]) == 25]
 
+    # Formato
     c_tickers = [s.replace('*', '') for s in c_tickers]
     c_tickers = [s.replace('LIVEPOLC.1', 'LIVEPOLC-1') for s in c_tickers]
-    c_tickers.remove(r_ticker)
+
+    # Eliminar ticker anteriormente especificado
+    c_tickers.remove(r_ticker) 
+    
+    # Ordenar por orden alfabético
     c_tickers.sort()
 
     return c_tickers
 
 def get_all_dates(all_files: 'dirección de todos los archivos'):
+    
+    'Función que obtiene las fechas de cada archivo, utilizando locale y obteniéndola de la primer fila de cada archivo'
     
     # Obtenemos los nombres de la primer fila de cada archivo
     dates = [pd.read_csv(f, nrows = 1).columns for f in all_files]
@@ -50,12 +67,16 @@ def get_all_dates(all_files: 'dirección de todos los archivos'):
     dates = [[x for x in dates[j] if not 'Unnamed' in x] for j in range(len(dates))]
     dates = [[x for x in dates[j] if not 'fecha' in x] for j in range(len(dates))]
     
+    # Quitar lista de listas
     dates = [item for sublist in dates for item in sublist]
 
     return dates
 
 def get_all_dates2(all_files: 'dirección de todos los archivos'):
     
+    'Función que obtiene las fechas de cada archivo, sin utilizar locale y obteniéndola del nombre del archivo'
+    
+    # Obtenemos únicamente la fecha del nombre de cada archivo
     dates = [all_files[i][14:22] for i in range(len(all_files))]
 
     return dates
@@ -226,3 +247,37 @@ def mkwtz_port(rf, prices):
     #report = report[report['W'] != 0]
     
     return report
+
+def inicial_active_dfs():
+    
+    return
+
+def percentage_change(col1,col2):
+    return ((col2 - col1) / col1) * 100
+
+def initial_active_port(port_info, prices, titulos, date, capital, res_df, cash):
+    
+    info = port_info[port_info['W'] != 0]
+    ticks = info.index
+    weights = info.iloc[:,0].values
+    pcs = prices.loc[date]['Close'].loc[ticks].values
+    titulos = [i for i in titulos if i != 0]
+    
+    df = pd.DataFrame(data = {'Tickers': ticks,
+                             'Ponderación': weights,
+                             f"Precio ({date})": pcs,
+                             'Títulos': titulos
+                             })
+    
+    cap = capital
+
+    money = [(w / 100) * cap for w in weights]
+    
+    df['Valor posición'] = round(df[f"Precio ({date})"] * df['Títulos'], 2)
+    
+    res = [sum(money - df['Valor posición'])]
+    res_df.loc[date] = cash + res
+         
+    df = df.append(df.sum(numeric_only=True), ignore_index=True)
+    
+    return df
